@@ -4,12 +4,16 @@ import argparse
 import csv
 import json
 import random
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
 from decord import VideoReader, cpu
+
+# Allow the script to be launched directly from the repository root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from holmesvau.holmesvau_utils import (
     generate,
