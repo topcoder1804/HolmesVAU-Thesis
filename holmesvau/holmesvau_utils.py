@@ -1,3 +1,4 @@
+import os
 import torch
 import numpy as np
 from PIL import Image
@@ -10,11 +11,12 @@ from holmesvau.internvl_utils import build_transform, get_index, dynamic_preproc
 
 
 def load_model(mllm_path, sampler_path, device):
+    use_flash_attn = os.getenv("HOLMESVAU_USE_FLASH_ATTN", "0") == "1"
     model = AutoModel.from_pretrained(
         mllm_path,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-        use_flash_attn=True,
+        use_flash_attn=use_flash_attn,
         trust_remote_code=True,
         ).eval()
     tokenizer = AutoTokenizer.from_pretrained(mllm_path, trust_remote_code=True, use_fast=False)
