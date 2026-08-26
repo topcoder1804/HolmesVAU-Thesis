@@ -40,10 +40,17 @@ class Temporal_Sampler():
         pixel_values: [T, C, H, W]
         '''
         anomaly_score = self.get_anomaly_scores(pixel_values, model)
+        sampled_idxs = self.density_aware_sample_from_scores(
+            anomaly_score, select_frames
+        )
+        return anomaly_score, sampled_idxs
+
+    def density_aware_sample_from_scores(self, anomaly_score, select_frames=16):
+        """Select frames from already-computed anomaly scores."""
         num_frames = anomaly_score.shape[0]
         if num_frames <= select_frames or sum(anomaly_score) < 1:
             sampled_idxs = list(np.rint(np.linspace(0, num_frames-1, select_frames)))
-            return anomaly_score, sampled_idxs
+            return sampled_idxs
         else:
             scores = [score + self.tau for score in anomaly_score]
             score_cumsum = np.concatenate((np.zeros((1,), dtype=float), np.cumsum(scores)), axis=0)
@@ -52,6 +59,6 @@ class Temporal_Sampler():
             scale_x = np.linspace(1, max_score_cumsum, select_frames)
             sampled_idxs = f_upsample(scale_x)
             sampled_idxs = [min(num_frames-1, max(0, int(idx))) for idx in sampled_idxs]
-            return anomaly_score, sampled_idxs
+            return sampled_idxs
 
     

@@ -113,8 +113,8 @@ def run_strategy(
                 vr, model, sampler, dense_sample_freq, frame_budget
             )
         )
-        anomaly_scores, sampled = sampler.density_aware_sample(
-            pixel_values, model, frame_budget
+        sampled = sampler.density_aware_sample_from_scores(
+            anomaly_scores, frame_budget
         )
         sampled = [int(index) for index in sampled]
         frame_indices = sorted(
