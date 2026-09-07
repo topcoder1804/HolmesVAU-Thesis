@@ -49,8 +49,7 @@ class Temporal_Sampler():
         """Select frames from already-computed anomaly scores."""
         num_frames = anomaly_score.shape[0]
         if num_frames <= select_frames or sum(anomaly_score) < 1:
-            sampled_idxs = list(np.rint(np.linspace(0, num_frames-1, select_frames)))
-            return sampled_idxs
+            return list(range(num_frames))
         else:
             scores = [score + self.tau for score in anomaly_score]
             score_cumsum = np.concatenate((np.zeros((1,), dtype=float), np.cumsum(scores)), axis=0)
