@@ -84,7 +84,7 @@ def main():
     ap.add_argument("--model-path", default="./ckpts/HolmesVAU-2B")
     ap.add_argument("--stride", type=int, default=16)
     ap.add_argument("--batch", type=int, default=32)
-    ap.add_argument("--dtype", choices=["bf16", "fp16"], default="bf16")
+    ap.add_argument("--dtype", choices=["bf16", "fp16"], default="fp16")  # T4 has no native bf16
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--list", default="", help="optional txt of video basenames to keep")
     a = ap.parse_args()
@@ -110,7 +110,7 @@ def main():
 
     log = open(out / "_log.jsonl", "a")
     done, t_start = 0, time.perf_counter()
-    feats, vit_s = [], 0.0
+    feats, vit_s, n_fp32 = [], 0.0, 0
     while True:
         item = q.get()
         if item is None:
@@ -123,8 +123,14 @@ def main():
             t0 = time.perf_counter()
             with torch.no_grad():
                 emb = vision(pixel_values=payload.to(device).to(dtype), output_hidden_states=False,
-                             return_dict=True).last_hidden_state
-                feats.append(emb[:, 0, :].float().cpu())
+                             return_dict=True).last_hidden_state[:, 0, :].float()
+                if not torch.isfinite(emb).all():  # fp16 overflow guard: redo this batch in fp32
+                    vision.float()
+                    emb = vision(pixel_values=payload.to(device).float(), output_hidden_states=False,
+                                 return_dict=True).last_hidden_state[:, 0, :].float()
+                    vision.to(dtype)
+                    n_fp32 += 1
+                feats.append(emb.cpu())
             torch.cuda.synchronize()
             vit_s += time.perf_counter() - t0
         elif kind == "error":
@@ -137,7 +143,7 @@ def main():
             np.savez(out / f"{path.stem}.npz", feats=arr, idx=np.asarray(idx, np.int32),
                      fps=fps, n_frames=n, decode_s=decode_s, vit_s=vit_s)
             rec = {"video": path.name, "T": len(idx), "n_frames": n, "fps": fps,
-                   "decode_s": round(decode_s, 3), "vit_s": round(vit_s, 3)}
+                   "decode_s": round(decode_s, 3), "vit_s": round(vit_s, 3), "fp32_batches": n_fp32}
             log.write(json.dumps(rec) + "\n")
             log.flush()
             done += 1
