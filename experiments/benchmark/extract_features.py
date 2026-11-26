@@ -47,8 +47,35 @@ def load_vision(model_path, device, dtype):
     ).eval()
     vision = model.vision_model.to(device)
     del model
+    if os.getenv("HOLMES_SDPA", "1") == "1":
+        patch_sdpa(vision)
     torch.cuda.empty_cache()
     return vision
+
+
+def patch_sdpa(vision):
+    """Swap InternViT's eager attention for torch SDPA (same maths, fused kernel)."""
+    import types
+    import torch.nn.functional as F
+
+    def _sdpa_attn(self, x):
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv.unbind(0)
+        if self.qk_normalization:
+            B_, H_, N_, D_ = q.shape
+            q = self.q_norm(q.transpose(1, 2).flatten(-2, -1)).view(B_, N_, H_, D_).transpose(1, 2)
+            k = self.k_norm(k.transpose(1, 2).flatten(-2, -1)).view(B_, N_, H_, D_).transpose(1, 2)
+        x = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0, scale=self.scale)
+        x = x.transpose(1, 2).reshape(B, N, C)
+        return self.proj_drop(self.proj(x))
+
+    n = 0
+    for m in vision.modules():
+        if type(m).__name__ == "InternAttention":
+            m._naive_attn = types.MethodType(_sdpa_attn, m)
+            n += 1
+    print(f"SDPA attention patched into {n} layers")
 
 
 def decode_worker(videos, stride, batch, q, transform):
