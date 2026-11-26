@@ -92,6 +92,7 @@ def methods(fast_kw):
         "Coarse-ATS (s=48)": lambda v, k, sc: S.s_coarse_ats(v, k, sc, coarse=48),
         "Fast-ATS": lambda v, k, sc: S.s_fast_ats(v, k, sc, **fast_kw),
         "Fast-ATS (joint)": lambda v, k, sc: S.s_fast_ats(v, k, sc, joint=True, **fast_kw),
+        "Fast-ATS-D": lambda v, k, sc: S.s_fast_ats_d(v, k, sc, **fast_kw),
     }
 
 
@@ -190,7 +191,7 @@ def run(args):
 
     # ---------------- Fast-ATS parameter sweep @K=12 ----------------
     sweep = []
-    grid = itertools.product(args.sweep_coarse, (2, 4, 6), (4.0, 8.0, 12.0), (2, 4, 6), (False, True))
+    grid = [] if args.no_sweep else itertools.product(args.sweep_coarse, (2, 4, 6), (4.0, 8.0, 12.0), (2, 4, 6), (False, True))
     for coarse, reg, rad, ctx, joint in grid:
         res = []
         for v in vids:
@@ -202,7 +203,8 @@ def run(args):
                           event_hit=100 * r.event_hit.mean(), any_hit=100 * r.any_hit.mean(),
                           precision=100 * r.precision.mean(), vit_per_video=r.n_vit.mean(),
                           sel_s_per_video=r.sel_s.mean()))
-    pd.DataFrame(sweep).to_csv(out / "sweep.csv", index=False)
+    if sweep:
+        pd.DataFrame(sweep).to_csv(out / "sweep.csv", index=False)
 
     meta = dict(dataset=args.dataset, n_videos=len(vids), n_anomalous=int(sum(bool(gt[v.name]) for v in vids)),
                 total_hours=sum(v.n / v.fps for v in vids) / 3600,
@@ -223,4 +225,5 @@ if __name__ == "__main__":
     ap.add_argument("--sweep-coarse", type=int, nargs="+", default=[32, 48, 64, 96])
     ap.add_argument("--train-mode-scorer", action="store_true")
     ap.add_argument("--train-mode-check", action="store_true")
+    ap.add_argument("--no-sweep", action="store_true")
     run(ap.parse_args())

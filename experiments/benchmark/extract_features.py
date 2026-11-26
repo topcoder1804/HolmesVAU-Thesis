@@ -18,6 +18,8 @@ Output per video: <out>/<video_stem>.npz with
 """
 
 import argparse
+import os as _os
+_os.environ["MPLBACKEND"] = "Agg"
 import json
 import os
 import queue

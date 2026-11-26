@@ -51,6 +51,8 @@ class Scorer:
 # ----------------------------------------------------------------- helpers
 def uniform_frames(n_frames, k):
     """HolmesVAU / InternVL `get_index` with bound=None."""
+    if k <= 0:
+        return []
     seg = float(n_frames - 1) / k
     return sorted({int(seg / 2 + np.round(seg * i)) for i in range(k)})
 
@@ -212,3 +214,25 @@ def s_coarse_ats(v, k, scorer, coarse=48, **_):
     s = scorer(v.feats[cpos])
     pos, _ = density_positions(s, k)
     return fill_to_budget(v.grid[cpos[pos]].tolist(), v.n, k), len(cpos)
+
+
+def s_fast_ats_d(v, k, scorer, coarse=48, regions=4, radius=8.0, context=4, gap_factor=2.0, **_):
+    """Fast-ATS-D: Fast-ATS (joint re-scoring) with diversity-aware final selection.
+
+    The k-context anomaly frames are the highest-scoring scored frames subject to a
+    minimum temporal gap of n_frames / (gap_factor * k); `context` uniform frames are
+    added for global context. Same encoder cost as Fast-ATS.
+    """
+    info = {}
+    _, n_vit = s_fast_ats(v, k, scorer, coarse=coarse, regions=regions, radius=radius,
+                          context=context, joint=True, info=info)
+    frames, val = v.grid[info["scored_pos"]], info["scored_val"]
+    gap = v.n / (gap_factor * k)
+    chosen = []
+    for i in np.argsort(val)[::-1]:
+        f = int(frames[i])
+        if all(abs(f - c) >= gap for c in chosen):
+            chosen.append(f)
+        if len(chosen) == k - context:
+            break
+    return fill_to_budget(chosen + uniform_frames(v.n, context), v.n, k), n_vit

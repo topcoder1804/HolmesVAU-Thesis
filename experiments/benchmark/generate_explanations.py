@@ -10,6 +10,9 @@ Resumable: every response is appended to <out>.jsonl immediately.
 
 import argparse
 import json
+import os
+
+os.environ["MPLBACKEND"] = "Agg"  # Colab sets an inline backend the venv cannot load
 import sys
 import time
 from pathlib import Path
