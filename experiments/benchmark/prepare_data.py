@@ -63,19 +63,40 @@ def prepare_ucf(root: Path):
         print("Missing:", miss[:20])
 
 
-def prepare_xd(root: Path):
-    local = root / "xd" / "hf"
-    snapshot_download(
-        XD_REPO,
-        repo_type="dataset",
-        local_dir=local,
-        allow_patterns=["data/test_annotations.txt", "data/test_list.txt", "data/video/test_videos/*"],
-    )
-    vids = root / "xd" / "videos"
-    if not vids.exists():
-        os.symlink(local / "data" / "video" / "test_videos", vids)
-    shutil.copy(local / "data" / "test_annotations.txt", root / "xd" / "test_annotations.txt")
-    print("XD-Violence test videos on disk:", len(list(vids.glob("*.mp4"))))
+def prepare_xd(root: Path, workers=8):
+    """Per-file download with retries (snapshot_download can die on a 416 resume)."""
+    from concurrent.futures import ThreadPoolExecutor
+    from huggingface_hub import HfApi
+
+    out = root / "xd" / "videos"
+    out.mkdir(parents=True, exist_ok=True)
+    tmp = root / "xd" / "hf"
+    for name in ("data/test_annotations.txt", "data/test_list.txt"):
+        f = hf_hub_download(XD_REPO, name, repo_type="dataset", local_dir=tmp)
+        shutil.copy(f, root / "xd" / os.path.basename(name))
+    files = [x.path for x in HfApi().list_repo_tree(XD_REPO, path_in_repo="data/video/test_videos",
+                                                     repo_type="dataset") if x.path.endswith(".mp4")]
+    print("XD-Violence test videos listed:", len(files))
+
+    def get(path):
+        dst = out / os.path.basename(path)
+        if dst.exists() and dst.stat().st_size > 0:
+            return True
+        for attempt in range(4):
+            try:
+                # a stale partial file triggers HTTP 416 on resume: retries re-download from scratch
+                f = hf_hub_download(XD_REPO, path, repo_type="dataset", local_dir=tmp,
+                                    force_download=attempt > 0)
+                shutil.move(f, dst)
+                return True
+            except Exception as exc:
+                if attempt == 3:
+                    print("FAILED", path, str(exc)[:120])
+        return False
+
+    with ThreadPoolExecutor(workers) as ex:
+        ok = sum(ex.map(get, files))
+    print("XD-Violence test videos on disk:", ok, "/", len(files))
 
 
 if __name__ == "__main__":

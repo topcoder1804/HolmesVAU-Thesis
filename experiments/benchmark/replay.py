@@ -39,7 +39,7 @@ def load_gt(path, dataset):
         p = line.split()
         if not p:
             continue
-        stem = Path(p[0]).stem
+        stem = p[0][:-4] if p[0].endswith(".mp4") else p[0]  # names may contain dots
         nums = [int(x) for x in (p[2:] if dataset == "ucf" else p[1:])]
         ev = [(nums[i], nums[i + 1]) for i in range(0, len(nums) - 1, 2) if nums[i] >= 0]
         gt[stem] = ev
@@ -106,6 +106,9 @@ def run(args):
     out.mkdir(parents=True, exist_ok=True)
     gt = load_gt(args.gt, args.dataset)
     files = sorted(p for p in feat_dir.glob("*.npz"))
+    for p in files:  # XD-Violence lists only anomalous videos; label_A = normal
+        if p.stem not in gt and "_label_A" in p.stem:
+            gt[p.stem] = []
     vids = [S.Video(p) for p in files if p.stem in gt]
     print(f"{len(vids)} videos with features and ground truth "
           f"({sum(1 for v in vids if gt[v.name])} anomalous)")
